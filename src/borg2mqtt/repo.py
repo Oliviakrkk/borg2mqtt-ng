@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime
 import json
 import os
@@ -27,13 +29,13 @@ class MQTTSettings:
     keyfile: str = ""
     insecure: bool = False
 
-    def tls_params(self) -> "TLSParameter | None":
+    def tls_params(self) -> TLSParameter | None:
         """Build the tls kwarg for paho's publish functions, or None if disabled"""
 
         if not self.tls:
             return None
 
-        params: "TLSParameter" = {}
+        params: TLSParameter = {}
         if self.ca_certs:
             params["ca_certs"] = self.ca_certs
         if self.certfile:

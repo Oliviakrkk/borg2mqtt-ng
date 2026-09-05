@@ -39,7 +39,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-dev = ["basedpyright>=1.37.4", "pre-commit>=4.0.1", "pytest>=7.4.4", "ruff>=0.15.0"]
+dev = [
+    "basedpyright>=1.37.4",
+    "pre-commit>=4.0.1",
+    "pytest>=7.4.4",
+    "ruff>=0.16.6",
+]
 
 [project.scripts]
 borg2mqtt = "borg2mqtt:run_borg2mqtt"
