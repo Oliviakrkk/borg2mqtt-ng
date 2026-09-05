@@ -8,6 +8,7 @@ Send borgbackup updates over MQTT, including support for Home Assistant MQTT aut
 - Most recent backup
 - Last backup name, start/end time, duration, file count, and size (original/compressed/deduplicated)
 - `borg check` state, timestamp, and duration
+- Real backup pass/fail result and timestamp, reported by borgmatic (see "Real backup pass/fail status" below)
 
 ![](images/ha_example.png)
 
@@ -79,6 +80,38 @@ To run a repository consistency check (`borg check`) and publish the result, run
 borg2mqtt check
 ```
 This can be slow, so it's best run on its own schedule (e.g. weekly) rather than alongside `update`. It also accepts `-n`/`--name` to check a single repository.
+
+# Real backup pass/fail status
+`update` and `check` only report what's *in* the repository (existing archives, chunk stats, etc) - they have no way of knowing whether the backup job that's supposed to create those archives actually succeeded. If backups are run by something like [borgmatic](https://torsion.org/borgmatic/) in a separate container, that's the only thing that actually knows the real result.
+
+To surface that, have borgmatic drop a small JSON file describing the outcome, and let borg2mqtt pick it up:
+
+1. Give the borgmatic and borg2mqtt containers a shared volume, e.g. `./status:/shared/status` on both (see the commented-out example in `docker-compose.yaml`).
+2. Add a borgmatic [command hook](https://torsion.org/borgmatic/docs/how-to/add-preparation-and-cleanup-steps-to-backups/) (requires borgmatic ≥2.0.3 for the `states` option) that writes the result after each backup:
+    ```yaml
+    commands:
+      - after: action
+        when: [create]
+        states: [finish]
+        run:
+          - >-
+            echo "{\"status\": \"success\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"repository\": \"{repository_label}\"}" > /shared/status/{repository_label}.json
+
+      - after: action
+        when: [create]
+        states: [fail]
+        run:
+          - >-
+            echo "{\"status\": \"failure\", \"error\": \"{error}\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"repository\": \"{repository_label}\"}" > /shared/status/{repository_label}.json
+    ```
+    `{repository_label}` must match this repo's `name:` in borg2mqtt's `config.yml` - that's how borg2mqtt matches a status file to a repo (not by filename).
+3. Run
+    ```bash
+    borg2mqtt report-status
+    ```
+    which scans the status directory (`-d`/`--status-dir`, defaulting to `$BORG2MQTT_STATUS_DIR` or `/shared/status`), publishes any matching result to that repo's `last_result`/`last_result_error`/`last_result_timestamp` sensors (registered by `setup`), and deletes the file once published. Under the provided Docker Compose setup this runs automatically every minute via cron.
+
+Unlike `last_backup_*` (which reflects the latest archive present in the repo), `last_result_timestamp` only advances when a backup job actually ran, so a HA automation comparing it against "now" can catch a backup that silently stopped running - not just one that ran and failed.
 
 # Running with Docker Compose
 A `Dockerfile` and `docker-compose.yaml` are provided for a fully automated, self-scheduling deployment. Given SSH keys in `./ssh` and (optionally) an existing config in `./config/config.yml`, just run

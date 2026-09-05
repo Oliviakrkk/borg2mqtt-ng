@@ -20,12 +20,15 @@ done
 CHECK_CRON=$(borg2mqtt -c "$CONFIG_FILE" schedule)
 log "Scheduling: update hourly, check on '$CHECK_CRON'"
 
+STATUS_DIR="${BORG2MQTT_STATUS_DIR:-/shared/status}"
+
 CRON_FILE=/etc/cron.d/borg2mqtt
 cat > "$CRON_FILE" <<EOF
 PATH=$PATH
 MAILTO=""
 0 * * * * root $BORG2MQTT_BIN -c "$CONFIG_FILE" update >> /proc/1/fd/1 2>> /proc/1/fd/2
 $CHECK_CRON root $BORG2MQTT_BIN -c "$CONFIG_FILE" check >> /proc/1/fd/1 2>> /proc/1/fd/2
+* * * * * root $BORG2MQTT_BIN -c "$CONFIG_FILE" report-status -d "$STATUS_DIR" >> /proc/1/fd/1 2>> /proc/1/fd/2
 EOF
 chmod 0644 "$CRON_FILE"
 

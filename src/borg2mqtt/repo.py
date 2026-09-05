@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from pprint import pprint
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -69,6 +70,7 @@ class Repository:
         self.slug = slugify(self.name, separator="_")
         self.state_topic = f"borg/{self.slug}/state"
         self.check_topic = f"borg/{self.slug}/check"
+        self.result_topic = f"borg/{self.slug}/result"
 
     def _ask_borg(self, command: Literal["info", "list"], target: str | None = None):
         """Poll borg for a response"""
@@ -256,6 +258,59 @@ class Repository:
 
         self._publish(mqtt, self.check_topic, info)
 
+    def report_status(self, mqtt: MQTTSettings, status_dir: Path) -> bool:
+        """Look for a pending backup-result file (dropped by a borgmatic hook)
+        belonging to this repo and publish it over MQTT.
+
+        Files are matched by their `repository` field rather than filename, so
+        this doesn't depend on how borgmatic's `{repository_label}` happens to
+        be quoted/escaped on disk. Malformed files are renamed to `.invalid`
+        so they don't get retried forever; matched files are removed once
+        published.
+        """
+
+        if not status_dir.is_dir():
+            return False
+
+        for status_file in sorted(status_dir.glob("*.json")):
+            try:
+                with open(status_file) as f:
+                    data = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                if self.verbose >= 1:
+                    print(
+                        f"[{APP_NAME}][{self.name}] Ignoring unreadable status "
+                        f"file {status_file}: {e}"
+                    )
+                status_file.rename(status_file.with_suffix(".invalid"))
+                continue
+
+            if data.get("repository") != self.name:
+                continue
+
+            result = {
+                "last_result": data.get("status", "unknown"),
+                "last_result_error": data.get("error", ""),
+                "last_result_timestamp": data.get("timestamp", ""),
+            }
+
+            if self.verbose >= 1:
+                print(
+                    f"[{APP_NAME}][{self.name}] Publishing backup result "
+                    f"from {status_file}"
+                )
+            if self.verbose >= 2:
+                print(
+                    f"[{APP_NAME}][{self.name}] Payload for send to MQTT: "
+                    f"{json.dumps(result)}"
+                )
+
+            self._publish(mqtt, self.result_topic, result)
+            status_file.unlink()
+            return True
+
+        return False
+
     def setup(self, mqtt: MQTTSettings):
         """Send MQTT autodiscovery message"""
 
@@ -337,6 +392,22 @@ class Repository:
             },
         }
 
+        # Reports the real pass/fail outcome of the last borgmatic run itself
+        # (as opposed to `last_backup_*` above, which only reflects whatever
+        # archive already exists in the repo). Populated by `report-status`
+        # from a file dropped by a borgmatic command hook.
+        result_payload_unique = {
+            "last_result": {"name": "Last Backup Result"},
+            "last_result_error": {
+                "name": "Last Backup Error",
+                "enabled_by_default": False,
+            },
+            "last_result_timestamp": {
+                "name": "Last Backup Result Timestamp",
+                "device_class": "timestamp",
+            },
+        }
+
         device = {
             "identifiers": [info["id"]],
             "name": self.name,
@@ -347,16 +418,26 @@ class Repository:
         if self.verbose >= 1:
             print(f"[{APP_NAME}][{self.name}] Sending MQTT setup msgs")
 
-        # Check sensors are always set up (a check may not have run yet),
-        # update sensors only exist if `info` actually produced them
-        keys_to_setup = list(info) + list(check_payload_unique)
-        payload_unique = {**payload_unique, **check_payload_unique}
+        # Check and result sensors are always set up (a check/backup may not
+        # have run yet), update sensors only exist if `info` actually
+        # produced them
+        keys_to_setup = (
+            list(info) + list(check_payload_unique) + list(result_payload_unique)
+        )
+        payload_unique = {
+            **payload_unique,
+            **check_payload_unique,
+            **result_payload_unique,
+        }
 
         for key in keys_to_setup:
             unique = payload_unique[key]
-            state_topic = (
-                self.check_topic if key in check_payload_unique else self.state_topic
-            )
+            if key in check_payload_unique:
+                state_topic = self.check_topic
+            elif key in result_payload_unique:
+                state_topic = self.result_topic
+            else:
+                state_topic = self.state_topic
             topic = f"homeassistant/sensor/{self.slug}/{key}/config"
             payload = {**unique, "state_topic": state_topic, "device": device}
             payload["default_entity_id"] = f"{self.slug}_{key}"

@@ -112,3 +112,8 @@ def update(repos: list[Repository], mqtt: MQTTSettings):
 def check(repos: list[Repository], mqtt: MQTTSettings):
     for r in repos:
         r.check(mqtt)
+
+
+def report_status(repos: list[Repository], mqtt: MQTTSettings, status_dir: Path):
+    for r in repos:
+        r.report_status(mqtt, status_dir)

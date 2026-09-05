@@ -403,8 +403,8 @@ def test_setup_publishes_one_message_per_info_key(mock_get_updates, mock_publish
 
     repo.setup(MQTTSettings())
 
-    # Plus the 3 `borg check` sensors, which are always set up
-    assert mock_publish.call_count == len(info) + 3
+    # Plus the 3 `borg check` sensors and 3 result sensors, always set up
+    assert mock_publish.call_count == len(info) + 3 + 3
 
 
 @patch("borg2mqtt.repo.publish.single")
@@ -430,15 +430,20 @@ def test_setup_payload_contains_device_and_topic(mock_get_updates, mock_publish)
         assert payload["device"]["name"] == "MyRepo"
         assert payload["device"]["manufacturer"] == "Borg"
 
-    update_payloads = [
-        p for p in payloads if not p["unique_id"].startswith(f"{repo.slug}_check_")
-    ]
     check_payloads = [
         p for p in payloads if p["unique_id"].startswith(f"{repo.slug}_check_")
+    ]
+    result_payloads = [
+        p for p in payloads if p["unique_id"].startswith(f"{repo.slug}_last_result")
+    ]
+    update_payloads = [
+        p for p in payloads if p not in check_payloads and p not in result_payloads
     ]
     assert all(p["state_topic"] == repo.state_topic for p in update_payloads)
     assert len(check_payloads) == 3
     assert all(p["state_topic"] == repo.check_topic for p in check_payloads)
+    assert len(result_payloads) == 3
+    assert all(p["state_topic"] == repo.result_topic for p in result_payloads)
 
     num_backups_payload = next(
         json.loads(call.kwargs["payload"])
@@ -449,6 +454,97 @@ def test_setup_payload_contains_device_and_topic(mock_get_updates, mock_publish)
     assert num_backups_payload["default_entity_id"] == f"{repo.slug}_num_backups"
     assert num_backups_payload["value_template"] == "{{value_json.num_backups}}"
     assert num_backups_payload["name"] == "Total Backups"
+
+
+# --------------------------------------------------------------------------- #
+# Repository.report_status
+# --------------------------------------------------------------------------- #
+
+
+@patch("borg2mqtt.repo.publish.single")
+def test_report_status_missing_dir_returns_false(mock_publish, tmp_path):
+    repo = Repository(repo="user@host:/path", name="MyRepo")
+
+    result = repo.report_status(MQTTSettings(), tmp_path / "does-not-exist")
+
+    assert result is False
+    mock_publish.assert_not_called()
+
+
+@patch("borg2mqtt.repo.publish.single")
+def test_report_status_publishes_matching_file_and_deletes_it(mock_publish, tmp_path):
+    repo = Repository(repo="user@host:/path", name="MyRepo")
+    status_file = tmp_path / "MyRepo.json"
+    status_file.write_text(
+        json.dumps(
+            {
+                "status": "success",
+                "timestamp": "2024-01-01T00:00:00Z",
+                "repository": "MyRepo",
+            }
+        )
+    )
+
+    result = repo.report_status(MQTTSettings(), tmp_path)
+
+    assert result is True
+    assert not status_file.exists()
+    mock_publish.assert_called_once()
+    assert mock_publish.call_args.args[0] == repo.result_topic
+    payload = json.loads(mock_publish.call_args.kwargs["payload"])
+    assert payload == {
+        "last_result": "success",
+        "last_result_error": "",
+        "last_result_timestamp": "2024-01-01T00:00:00Z",
+    }
+
+
+@patch("borg2mqtt.repo.publish.single")
+def test_report_status_includes_error_on_failure(mock_publish, tmp_path):
+    repo = Repository(repo="user@host:/path", name="MyRepo")
+    (tmp_path / "MyRepo.json").write_text(
+        json.dumps(
+            {
+                "status": "failure",
+                "error": "connection refused",
+                "timestamp": "2024-01-01T00:00:00Z",
+                "repository": "MyRepo",
+            }
+        )
+    )
+
+    repo.report_status(MQTTSettings(), tmp_path)
+
+    payload = json.loads(mock_publish.call_args.kwargs["payload"])
+    assert payload["last_result"] == "failure"
+    assert payload["last_result_error"] == "connection refused"
+
+
+@patch("borg2mqtt.repo.publish.single")
+def test_report_status_ignores_file_for_other_repo(mock_publish, tmp_path):
+    repo = Repository(repo="user@host:/path", name="MyRepo")
+    other_file = tmp_path / "OtherRepo.json"
+    other_file.write_text(json.dumps({"status": "success", "repository": "OtherRepo"}))
+
+    result = repo.report_status(MQTTSettings(), tmp_path)
+
+    assert result is False
+    assert other_file.exists()
+    mock_publish.assert_not_called()
+
+
+@patch("borg2mqtt.repo.publish.single")
+def test_report_status_renames_invalid_json(mock_publish, tmp_path):
+    repo = Repository(repo="user@host:/path", name="MyRepo")
+    bad_file = tmp_path / "MyRepo.json"
+    bad_file.write_text("not json")
+
+    result = repo.report_status(MQTTSettings(), tmp_path)
+
+    assert result is False
+    assert not bad_file.exists()
+    assert (tmp_path / "MyRepo.invalid").exists()
+    mock_publish.assert_not_called()
 
 
 @patch("borg2mqtt.repo.publish.single")

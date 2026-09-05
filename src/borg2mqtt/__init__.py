@@ -1,4 +1,5 @@
 import argparse
+import os
 from pathlib import Path
 
 from platformdirs import user_config_dir
@@ -76,6 +77,21 @@ def run_borg2mqtt():
                  Default runs all of them.",
     )
 
+    # ------------------------- Report real backup pass/fail status ------------------------- #
+    report_status = subparsers.add_parser(
+        "report-status",
+        help="Read pending backup result files (dropped by a borgmatic "
+        "command hook) and publish them to MQTT.",
+    )
+    report_status.add_argument(
+        "-d",
+        "--status-dir",
+        default=Path(os.environ.get("BORG2MQTT_STATUS_DIR", "/shared/status")),
+        type=Path,
+        help="Directory to look for backup result JSON files in. \
+                Defaults to $BORG2MQTT_STATUS_DIR or /shared/status.",
+    )
+
     # ------------------------- Print configured check schedule ------------------------- #
     subparsers.add_parser(
         "schedule",
@@ -89,6 +105,9 @@ def run_borg2mqtt():
         actions.generate(args.config)
     elif args.operation == "schedule":
         print(actions.get_check_cron(args.config))
+    elif args.operation == "report-status":
+        repos, mqtt = actions.parse(args)
+        actions.report_status(repos, mqtt, args.status_dir)
     else:
         repos, mqtt = actions.parse(args)
         args.func(repos, mqtt)

@@ -11,9 +11,9 @@ services:
     # The container's entrypoint (entrypoint.sh) drives the whole lifecycle:
     # it generates a starter config.yml if none exists yet, tries `setup`
     # (retrying hourly until it succeeds - e.g. once you've filled in real
-    # repo/MQTT details), and then runs `update` hourly plus `check` on the
+    # repo/MQTT details), and then runs `update` hourly, `check` on the
     # cron schedule from config.yml's `schedule.check_cron` (weekly by
-    # default) via cron.
+    # default), and `report-status` every minute, all via cron.
 
     volumes:
       # borg2mqtt's own config (mqtt broker + list of repos + schedule), see
@@ -22,5 +22,11 @@ services:
 
       # SSH key(s) + known_hosts used to reach remote borg repos, read-only.
       - ./ssh:/root/.ssh:ro
+
+      # Optional: shared with a borgmatic container's command hooks (see
+      # README's "Real backup pass/fail status" section) so `report-status`
+      # can pick up and publish the real success/failure of each backup run,
+      # not just the repo's current state.
+      # - ./status:/shared/status
 
     restart: unless-stopped
