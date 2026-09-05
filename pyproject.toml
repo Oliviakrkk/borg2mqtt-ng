@@ -8,7 +8,7 @@ license = { file = "LICENSE" }
 keywords = ["borg", "mqtt", "hass"]
 
 authors = [{ name = "Easton Potokar", email = "contagon6@gmail.com" }]
-maintainers = [{ name = "Easton Potokar", email = "contagon6@gmail.com" }]
+maintainers = [{ name = "Oliviakrkk", email = "oliviakrky@gmail.com" }]
 
 classifiers = [
   "Development Status :: 5 - Production/Stable",
@@ -30,9 +30,9 @@ classifiers = [
 dependencies = ["paho-mqtt", "platformdirs", "python-slugify", "pyyaml"]
 
 [project.urls]
-"Homepage" = "https://github.com/contagon/borg2mqtt"
-"Bug Reports" = "https://github.com/contagon/borg2mqtt/issues"
-"Source" = "https://github.com/contagon/borg2mqtt"
+"Homepage" = "https://github.com/Oliviakrkk/borg2mqtt-ng"
+"Bug Reports" = "https://github.com/Oliviakrkk/borg2mqtt-ng/issues"
+"Source" = "https://github.com/Oliviakrkk/borg2mqtt-ng"
 
 [build-system]
 requires = ["hatchling"]
