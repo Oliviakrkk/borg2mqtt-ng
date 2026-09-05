@@ -6,7 +6,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pprint import pprint
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from paho.mqtt import publish
 from slugify import slugify
@@ -35,7 +35,7 @@ class MQTTSettings:
         if not self.tls:
             return None
 
-        params: TLSParameter = {}
+        params: dict[str, Any] = {}
         if self.ca_certs:
             params["ca_certs"] = self.ca_certs
         if self.certfile:
@@ -44,7 +44,7 @@ class MQTTSettings:
             params["keyfile"] = self.keyfile
         if self.insecure:
             params["insecure"] = True
-        return params
+        return cast("TLSParameter", params)
 
 
 @dataclass
