@@ -14,6 +14,15 @@ mqtt:
   port: 1883
   user: ""
   password: ""
+  # Optional, enable mqtts (MQTT over TLS). Use port 8883 when enabled.
+  tls: false
+  # Optional, path to a CA certificate file. Leave blank to use the system trust store.
+  ca_certs: ""
+  # Optional, client certificate/key for mutual TLS
+  certfile: ""
+  keyfile: ""
+  # Optional, skip server certificate verification (not recommended)
+  insecure: false
 
 # Put in as many repositories as desired
 repos:

@@ -23,6 +23,8 @@ def test_mqtt_settings_defaults():
     assert settings.port == 1883
     assert settings.user == ""
     assert settings.password == ""
+    assert settings.tls is False
+    assert settings.tls_params() is None
 
 
 def test_mqtt_settings_custom_values():
@@ -32,6 +34,29 @@ def test_mqtt_settings_custom_values():
     assert settings.port == 8883
     assert settings.user == "u"
     assert settings.password == "p"
+
+
+def test_mqtt_settings_tls_enabled_no_extras():
+    settings = MQTTSettings(tls=True)
+
+    assert settings.tls_params() == {}
+
+
+def test_mqtt_settings_tls_params():
+    settings = MQTTSettings(
+        tls=True,
+        ca_certs="/etc/ssl/ca.pem",
+        certfile="/etc/ssl/client.pem",
+        keyfile="/etc/ssl/client.key",
+        insecure=True,
+    )
+
+    assert settings.tls_params() == {
+        "ca_certs": "/etc/ssl/ca.pem",
+        "certfile": "/etc/ssl/client.pem",
+        "keyfile": "/etc/ssl/client.key",
+        "insecure": True,
+    }
 
 
 # --------------------------------------------------------------------------- #

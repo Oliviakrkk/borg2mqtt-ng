@@ -18,6 +18,28 @@ class MQTTSettings:
     port: int = 1883
     user: str = ""
     password: str = ""
+    tls: bool = False
+    ca_certs: str = ""
+    certfile: str = ""
+    keyfile: str = ""
+    insecure: bool = False
+
+    def tls_params(self) -> dict | None:
+        """Build the tls kwarg for paho's publish functions, or None if disabled"""
+
+        if not self.tls:
+            return None
+
+        params: dict = {}
+        if self.ca_certs:
+            params["ca_certs"] = self.ca_certs
+        if self.certfile:
+            params["certfile"] = self.certfile
+        if self.keyfile:
+            params["keyfile"] = self.keyfile
+        if self.insecure:
+            params["insecure"] = True
+        return params
 
 
 @dataclass
@@ -131,6 +153,7 @@ class Repository:
             hostname=mqtt.host,
             port=mqtt.port,
             auth={"username": mqtt.user, "password": mqtt.password},
+            tls=mqtt.tls_params(),
             retain=True,
         )
 
@@ -197,5 +220,6 @@ class Repository:
                 hostname=mqtt.host,
                 port=mqtt.port,
                 auth={"username": mqtt.user, "password": mqtt.password},
+                tls=mqtt.tls_params(),
                 retain=True,
             )
