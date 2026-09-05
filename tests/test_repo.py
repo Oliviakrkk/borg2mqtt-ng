@@ -28,7 +28,9 @@ def test_mqtt_settings_defaults():
 
 
 def test_mqtt_settings_custom_values():
-    settings = MQTTSettings(host="broker.example.com", port=8883, user="u", password="p")
+    settings = MQTTSettings(
+        host="broker.example.com", port=8883, user="u", password="p"
+    )
 
     assert settings.host == "broker.example.com"
     assert settings.port == 8883
@@ -306,7 +308,9 @@ def test_setup_payload_contains_device_and_topic(mock_get_updates, mock_publish)
     assert f"homeassistant/sensor/{repo.slug}/num_backups/config" in topics
     assert f"homeassistant/sensor/{repo.slug}/id/config" in topics
 
-    payloads = [json.loads(call.kwargs["payload"]) for call in mock_publish.call_args_list]
+    payloads = [
+        json.loads(call.kwargs["payload"]) for call in mock_publish.call_args_list
+    ]
     for payload in payloads:
         assert payload["device"]["identifiers"] == ["repo-id"]
         assert payload["device"]["name"] == "MyRepo"

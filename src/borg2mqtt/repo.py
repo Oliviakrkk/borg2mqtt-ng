@@ -4,12 +4,15 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pprint import pprint
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from paho.mqtt import publish
 from slugify import slugify
 
 from .const import APP_NAME, UNITS
+
+if TYPE_CHECKING:
+    from paho.mqtt.publish import TLSParameter
 
 
 @dataclass
@@ -24,13 +27,13 @@ class MQTTSettings:
     keyfile: str = ""
     insecure: bool = False
 
-    def tls_params(self) -> dict | None:
+    def tls_params(self) -> "TLSParameter | None":
         """Build the tls kwarg for paho's publish functions, or None if disabled"""
 
         if not self.tls:
             return None
 
-        params: dict = {}
+        params: "TLSParameter" = {}
         if self.ca_certs:
             params["ca_certs"] = self.ca_certs
         if self.certfile:
@@ -84,9 +87,7 @@ class Repository:
         if self.verbose >= 2:
             print(f"[{APP_NAME}][{self.name}] Running {' '.join(arguments)}")
 
-        result = subprocess.run(
-            arguments, stdout=subprocess.PIPE, env=env, check=False
-        )
+        result = subprocess.run(arguments, stdout=subprocess.PIPE, env=env, check=False)
         result = json.loads(result.stdout)
 
         if self.verbose >= 3:

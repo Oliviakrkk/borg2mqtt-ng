@@ -34,7 +34,9 @@ def test_setup_operation_calls_func_with_parsed_repos_and_mqtt(mock_parse, monke
 
 
 @patch("borg2mqtt.actions.parse")
-def test_update_operation_calls_func_with_parsed_repos_and_mqtt(mock_parse, monkeypatch):
+def test_update_operation_calls_func_with_parsed_repos_and_mqtt(
+    mock_parse, monkeypatch
+):
     monkeypatch.setattr("sys.argv", ["borg2mqtt", "update", "--name", "MyRepo"])
     repos, mqtt = MagicMock(), MagicMock()
     mock_parse.return_value = (repos, mqtt)
@@ -50,7 +52,10 @@ def test_update_operation_calls_func_with_parsed_repos_and_mqtt(mock_parse, monk
 def test_update_name_defaults_to_none(monkeypatch):
     monkeypatch.setattr("sys.argv", ["borg2mqtt", "update"])
 
-    with patch("borg2mqtt.actions.parse") as mock_parse, patch("borg2mqtt.actions.update"):
+    with (
+        patch("borg2mqtt.actions.parse") as mock_parse,
+        patch("borg2mqtt.actions.update"),
+    ):
         mock_parse.return_value = (MagicMock(), MagicMock())
         run_borg2mqtt()
 
@@ -61,7 +66,10 @@ def test_update_name_defaults_to_none(monkeypatch):
 def test_verbose_flag_counts_occurrences(monkeypatch):
     monkeypatch.setattr("sys.argv", ["borg2mqtt", "-vv", "setup"])
 
-    with patch("borg2mqtt.actions.parse") as mock_parse, patch("borg2mqtt.actions.setup"):
+    with (
+        patch("borg2mqtt.actions.parse") as mock_parse,
+        patch("borg2mqtt.actions.setup"),
+    ):
         mock_parse.return_value = (MagicMock(), MagicMock())
         run_borg2mqtt()
 
@@ -71,11 +79,12 @@ def test_verbose_flag_counts_occurrences(monkeypatch):
 
 def test_custom_config_path_is_used(monkeypatch, tmp_path):
     config_path = tmp_path / "custom.yml"
-    monkeypatch.setattr(
-        "sys.argv", ["borg2mqtt", "-c", str(config_path), "setup"]
-    )
+    monkeypatch.setattr("sys.argv", ["borg2mqtt", "-c", str(config_path), "setup"])
 
-    with patch("borg2mqtt.actions.parse") as mock_parse, patch("borg2mqtt.actions.setup"):
+    with (
+        patch("borg2mqtt.actions.parse") as mock_parse,
+        patch("borg2mqtt.actions.setup"),
+    ):
         mock_parse.return_value = (MagicMock(), MagicMock())
         run_borg2mqtt()
 
