@@ -49,6 +49,12 @@ repos:
     rsh: ""
     # Optional, choose one of kB, MB, GB, TB. Defaults to GB.
     units: GB
+
+# Optional. Standard 5-field cron syntax controlling how often `borg2mqtt check`
+# runs under the provided Docker Compose setup. Defaults to weekly (Sunday
+# 03:00) if omitted. `update` always runs hourly and isn't configurable here.
+schedule:
+  check_cron: "0 3 * * 0"
 ```
 
 # Usage
@@ -73,6 +79,13 @@ To run a repository consistency check (`borg check`) and publish the result, run
 borg2mqtt check
 ```
 This can be slow, so it's best run on its own schedule (e.g. weekly) rather than alongside `update`. It also accepts `-n`/`--name` to check a single repository.
+
+# Running with Docker Compose
+A `Dockerfile` and `docker-compose.yaml` are provided for a fully automated, self-scheduling deployment. Given SSH keys in `./ssh` and (optionally) an existing config in `./config/config.yml`, just run
+```bash
+docker compose up -d
+```
+On first run, if `./config/config.yml` doesn't exist yet, the container generates a starter one for you. It then tries `setup`; if the config still has placeholder or incomplete values, `setup` fails and the container logs that and retries every hour (`SETUP_RETRY_INTERVAL`, in seconds) until it succeeds - so editing `./config/config.yml` with your real repo/MQTT details and either waiting for the next retry or running `docker compose restart` gets you going. Once `setup` succeeds, the container runs `update` every hour and `check` on the cron schedule from `schedule.check_cron` in `config.yml` (weekly by default) for as long as it keeps running.
 
 # Additional Options
 All options can always be shown by using flag `--help`. Additionally, varying levels of verbose output can be included through `-vvv`, put before the command type.

@@ -220,3 +220,24 @@ def test_check_calls_check_on_each_repo():
 
 def test_check_with_no_repos_does_nothing():
     actions.check([], MQTTSettings())  # should not raise
+
+
+# --------------------------------------------------------------------------- #
+# get_check_cron()
+# --------------------------------------------------------------------------- #
+
+
+def test_get_check_cron_returns_default_when_schedule_missing(tmp_path):
+    path = tmp_path / "config.yml"
+    path.write_text("repos:\n  - repo: user@host:/path\n")
+
+    assert actions.get_check_cron(path) == actions.DEFAULT_CHECK_CRON
+
+
+def test_get_check_cron_returns_configured_value(tmp_path):
+    path = tmp_path / "config.yml"
+    path.write_text(
+        "repos:\n  - repo: user@host:/path\nschedule:\n  check_cron: '0 0 * * *'\n"
+    )
+
+    assert actions.get_check_cron(path) == "0 0 * * *"

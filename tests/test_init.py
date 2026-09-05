@@ -106,6 +106,17 @@ def test_custom_config_path_is_used(monkeypatch, tmp_path):
         assert str(args.config) == str(config_path)
 
 
+@patch("borg2mqtt.actions.get_check_cron")
+def test_schedule_operation_prints_check_cron(mock_get_check_cron, monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["borg2mqtt", "schedule"])
+    mock_get_check_cron.return_value = "0 3 * * 0"
+
+    run_borg2mqtt()
+
+    mock_get_check_cron.assert_called_once()
+    assert capsys.readouterr().out.strip() == "0 3 * * 0"
+
+
 def test_no_operation_calls_parse_but_fails_dispatching_func(monkeypatch):
     """With no subcommand, argparse leaves operation=None, so the code still goes
     through the actions.parse() branch, but there is no args.func to dispatch to."""

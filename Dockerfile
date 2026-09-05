@@ -2,7 +2,8 @@ FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    PATH="/opt/venv/bin:$PATH"
+    PATH="/opt/venv/bin:$PATH" \
+    BORG2MQTT_CONFIG=/root/.config/borg2mqtt/config.yml
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 \
@@ -10,13 +11,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       borgbackup \
       openssh-client \
       ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && python3 -m venv /opt/venv
+      cron \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv
 
 # Wheel is built ahead of time with `uv build --wheel` (see local_build.sh /
 # .github/workflows/reusable_checks.yml) and expected in ./dist
 COPY dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm -rf /tmp/*.whl
 
-ENTRYPOINT ["borg2mqtt"]
-CMD ["--help"]
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

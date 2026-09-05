@@ -8,25 +8,19 @@ services:
     image: borg2mqtt-ng:local
     container_name: borg2mqtt
 
-    # borg2mqtt is a one-shot CLI, not a daemon - it sends its MQTT messages
-    # and exits. `setup` only needs to run once (or whenever the config
-    # changes) to register the Home Assistant autodiscovery entities; `update`
-    # is what you want to run on a schedule (host cron, a `docker compose run`
-    # cron job, etc) to push fresh sensor values.
-    command: ["update"]
-
-    environment:
-      # Passphrase for encrypted borg repos referenced in config.yml.
-      # Omit if none of your repos are passphrase-protected.
-      BORG_PASSPHRASE: "${BORG_PASSPHRASE:?set BORG_PASSPHRASE in .env}"
+    # The container's entrypoint (entrypoint.sh) drives the whole lifecycle:
+    # it generates a starter config.yml if none exists yet, tries `setup`
+    # (retrying hourly until it succeeds - e.g. once you've filled in real
+    # repo/MQTT details), and then runs `update` hourly plus `check` on the
+    # cron schedule from config.yml's `schedule.check_cron` (weekly by
+    # default) via cron.
 
     volumes:
-      # borg2mqtt's own config (mqtt broker + list of repos), see README for
-      # the format. Generate a starter file with:
-      #   docker compose run --rm borg2mqtt generate
+      # borg2mqtt's own config (mqtt broker + list of repos + schedule), see
+      # README for the format. Created automatically on first run if missing.
       - ./config:/root/.config/borg2mqtt
 
       # SSH key(s) + known_hosts used to reach remote borg repos, read-only.
       - ./ssh:/root/.ssh:ro
 
-    restart: "no"
+    restart: unless-stopped

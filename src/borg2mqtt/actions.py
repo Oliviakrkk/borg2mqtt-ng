@@ -1,5 +1,6 @@
 from argparse import Namespace
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -37,7 +38,15 @@ repos:
     units: GB
     # Optional, extra arguments to borg, e.g. "ssh -p 1234"
     rsh: ""
+
+# Optional. Standard 5-field cron syntax controlling how often `borg2mqtt check`
+# runs under the provided Docker Compose setup. Defaults to weekly (Sunday
+# 03:00) if omitted. `update` always runs hourly and isn't configurable here.
+schedule:
+  check_cron: "0 3 * * 0"
 """
+
+DEFAULT_CHECK_CRON = "0 3 * * 0"
 
 
 def parse(args: Namespace) -> tuple[list[Repository], MQTTSettings]:
@@ -80,6 +89,14 @@ def generate(path: Path):
     print(f"[{APP_NAME}] Making config file at {path}")
     with open(path, "w") as f:
         f.write(EXAMPLE_CONFIG)
+
+
+def get_check_cron(path: Path) -> str:
+    with open(path) as f:
+        config: dict[str, Any] = yaml.safe_load(f) or {}
+
+    schedule: dict[str, Any] = config.get("schedule") or {}
+    return str(schedule.get("check_cron", DEFAULT_CHECK_CRON))
 
 
 def setup(repos: list[Repository], mqtt: MQTTSettings):

@@ -76,10 +76,19 @@ def run_borg2mqtt():
                  Default runs all of them.",
     )
 
+    # ------------------------- Print configured check schedule ------------------------- #
+    subparsers.add_parser(
+        "schedule",
+        help="Print the configured cron schedule for `check` "
+        "(used by the Docker entrypoint).",
+    )
+
     args = parser.parse_args()
 
     if args.operation == "generate":
         actions.generate(args.config)
+    elif args.operation == "schedule":
+        print(actions.get_check_cron(args.config))
     else:
         repos, mqtt = actions.parse(args)
         args.func(repos, mqtt)
