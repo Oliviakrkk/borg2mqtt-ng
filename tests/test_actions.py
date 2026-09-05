@@ -13,19 +13,23 @@ import pytest
 from borg2mqtt import actions
 from borg2mqtt.repo import MQTTSettings, Repository
 
-
 # --------------------------------------------------------------------------- #
 # parse()
 # --------------------------------------------------------------------------- #
 
 
-def _args(operation="update", name=None, verbose=0, config="config.yml"):
+def _args(
+    operation: str = "update",
+    name: str | None = None,
+    verbose: int = 0,
+    config: str = "config.yml",
+) -> Namespace:
     return Namespace(operation=operation, name=name, verbose=verbose, config=config)
 
 
 @patch("borg2mqtt.actions.yaml.safe_load")
 @patch("builtins.open")
-def test_parse_returns_repos_and_mqtt(mock_open, mock_safe_load):
+def test_parse_returns_repos_and_mqtt(mock_open: MagicMock, mock_safe_load: MagicMock):
     mock_safe_load.return_value = {
         "mqtt": {"host": "broker", "port": 1884},
         "repos": [{"repo": "user@host:/path", "name": "Repo1"}],
@@ -46,7 +50,7 @@ def test_parse_returns_repos_and_mqtt(mock_open, mock_safe_load):
 def test_parse_defaults_mqtt_when_missing(mock_open, mock_safe_load):
     mock_safe_load.return_value = {"repos": [{"repo": "user@host:/path"}]}
 
-    repos, mqtt = actions.parse(_args())
+    _repos, mqtt = actions.parse(_args())
 
     assert mqtt == MQTTSettings()
 

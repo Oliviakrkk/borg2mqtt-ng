@@ -11,7 +11,6 @@ import pytest
 
 from borg2mqtt.repo import MQTTSettings, Repository
 
-
 # --------------------------------------------------------------------------- #
 # MQTTSettings
 # --------------------------------------------------------------------------- #
@@ -179,7 +178,7 @@ def test_get_updates_parses_info_and_list(mock_ask_borg):
     assert info["size_dedup_comp"] == pytest.approx(0.5)
     assert info["size_og"] == pytest.approx(2.0)
     assert info["size_og_comp"] == pytest.approx(0.9)
-    assert info["most_recent"].startswith("2024-01-15T10:30:00.123456")
+    assert str(info["most_recent"]).startswith("2024-01-15T10:30:00.123456")
 
 
 @patch.object(Repository, "_ask_borg")

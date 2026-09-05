@@ -46,3 +46,12 @@ borg2mqtt = "borg2mqtt:run_borg2mqtt"
 
 [tool.basedpyright]
 typeCheckingMode = "strict"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+reportMissingParameterType = false
+reportUnknownParameterType = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportPrivateUsage = false
