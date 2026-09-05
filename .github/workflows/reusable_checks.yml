@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         name: Checkout
-      - uses: astral-sh/ruff-action@v3
+      - uses: astral-sh/ruff-action@v4.1.0
         name: Ruff
 
   # run unit tests
