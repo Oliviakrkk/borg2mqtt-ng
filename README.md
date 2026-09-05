@@ -6,6 +6,8 @@ Send borgbackup updates over MQTT, including support for Home Assistant MQTT aut
 - Depuplicated (Un)compressed size
 - Total number of backups
 - Most recent backup
+- Last backup name, start/end time, duration, file count, and size (original/compressed/deduplicated)
+- `borg check` state, timestamp, and duration
 
 ![](images/ha_example.png)
 
@@ -65,6 +67,12 @@ Additionally, a single repository can be updated through it's name found in the 
 ```bash
 borg2mqtt update -n "My Repo"
 ```
+
+To run a repository consistency check (`borg check`) and publish the result, run
+```bash
+borg2mqtt check
+```
+This can be slow, so it's best run on its own schedule (e.g. weekly) rather than alongside `update`. It also accepts `-n`/`--name` to check a single repository.
 
 # Additional Options
 All options can always be shown by using flag `--help`. Additionally, varying levels of verbose output can be included through `-vvv`, put before the command type.

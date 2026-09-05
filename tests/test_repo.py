@@ -189,9 +189,32 @@ def _sample_borg_list():
     }
 
 
+def _sample_borg_archive_info():
+    return {
+        "archives": [
+            {
+                "name": "a2",
+                "start": "2024-01-15T10:00:00.000000",
+                "end": "2024-01-15T10:30:00.123456",
+                "duration": 1800.123456,
+                "stats": {
+                    "nfiles": 42,
+                    "original_size": 2_000_000_000,
+                    "compressed_size": 900_000_000,
+                    "deduplicated_size": 1_000_000_000,
+                },
+            }
+        ]
+    }
+
+
 @patch.object(Repository, "_ask_borg")
 def test_get_updates_parses_info_and_list(mock_ask_borg):
-    mock_ask_borg.side_effect = [_sample_borg_info(), _sample_borg_list()]
+    mock_ask_borg.side_effect = [
+        _sample_borg_info(),
+        _sample_borg_list(),
+        _sample_borg_archive_info(),
+    ]
     repo = Repository(repo="user@host:/path", units="GB")
 
     info = repo._get_updates()
@@ -206,27 +229,117 @@ def test_get_updates_parses_info_and_list(mock_ask_borg):
     assert info["size_og"] == pytest.approx(2.0)
     assert info["size_og_comp"] == pytest.approx(0.9)
     assert str(info["most_recent"]).startswith("2024-01-15T10:30:00.123456")
+    assert info["last_backup_name"] == "a2"
+    assert str(info["last_backup_start"]).startswith("2024-01-15T10:00:00")
+    assert str(info["last_backup_end"]).startswith("2024-01-15T10:30:00.123456")
+    assert info["last_backup_duration"] == pytest.approx(1800.12)
+    assert info["last_backup_files"] == 42
+    assert info["last_backup_size_og"] == pytest.approx(2.0)
+    assert info["last_backup_size_comp"] == pytest.approx(0.9)
+    assert info["last_backup_size_dedup"] == pytest.approx(1.0)
 
 
 @patch.object(Repository, "_ask_borg")
-def test_get_updates_calls_ask_borg_with_info_then_list(mock_ask_borg):
-    mock_ask_borg.side_effect = [_sample_borg_info(), _sample_borg_list()]
+def test_get_updates_calls_ask_borg_with_info_then_list_then_archive(mock_ask_borg):
+    mock_ask_borg.side_effect = [
+        _sample_borg_info(),
+        _sample_borg_list(),
+        _sample_borg_archive_info(),
+    ]
     repo = Repository(repo="user@host:/path")
 
     repo._get_updates()
 
     assert mock_ask_borg.call_args_list[0].args == ("info",)
     assert mock_ask_borg.call_args_list[1].args == ("list",)
+    assert mock_ask_borg.call_args_list[2].args == ("info",)
+    assert mock_ask_borg.call_args_list[2].kwargs == {"target": "user@host:/path::a2"}
 
 
 @patch.object(Repository, "_ask_borg")
 def test_get_updates_units_scale_kb(mock_ask_borg):
-    mock_ask_borg.side_effect = [_sample_borg_info(), _sample_borg_list()]
+    mock_ask_borg.side_effect = [
+        _sample_borg_info(),
+        _sample_borg_list(),
+        _sample_borg_archive_info(),
+    ]
     repo = Repository(repo="user@host:/path", units="kB")
 
     info = repo._get_updates()
 
     assert info["size_dedup"] == pytest.approx(1_000_000.0)
+
+
+@patch.object(Repository, "_ask_borg")
+def test_get_updates_skips_archive_lookup_when_no_archives(mock_ask_borg):
+    empty_list = {
+        "archives": [],
+        "repository": {"last_modified": "2024-01-15T10:30:00.123456"},
+    }
+    mock_ask_borg.side_effect = [_sample_borg_info(), empty_list]
+    repo = Repository(repo="user@host:/path")
+
+    info = repo._get_updates()
+
+    assert mock_ask_borg.call_count == 2
+    assert "last_backup_name" not in info
+
+
+# --------------------------------------------------------------------------- #
+# Repository._run_check
+# --------------------------------------------------------------------------- #
+
+
+@patch("borg2mqtt.repo.subprocess.run")
+def test_run_check_runs_expected_command(mock_run):
+    mock_run.return_value = MagicMock(returncode=0, stdout=b"")
+    repo = Repository(repo="user@host:/path", key="secret")
+
+    repo._run_check()
+
+    args, kwargs = mock_run.call_args
+    assert args[0] == ["borg", "check", "user@host:/path"]
+    assert kwargs["env"]["BORG_PASSPHRASE"] == "secret"
+
+
+@pytest.mark.parametrize(
+    ("returncode", "expected_state"),
+    [(0, "ok"), (1, "warning"), (2, "error"), (127, "error")],
+)
+@patch("borg2mqtt.repo.subprocess.run")
+def test_run_check_maps_returncode_to_state(mock_run, returncode, expected_state):
+    mock_run.return_value = MagicMock(returncode=returncode, stdout=b"")
+    repo = Repository(repo="user@host:/path")
+
+    info = repo._run_check()
+
+    assert info["check_state"] == expected_state
+    assert "check_timestamp" in info
+    assert isinstance(info["check_duration"], float)
+
+
+# --------------------------------------------------------------------------- #
+# Repository.check
+# --------------------------------------------------------------------------- #
+
+
+@patch("borg2mqtt.repo.publish.single")
+@patch.object(Repository, "_run_check")
+def test_check_publishes_to_check_topic(mock_run_check, mock_publish):
+    mock_run_check.return_value = {
+        "check_state": "ok",
+        "check_timestamp": "2024-01-01T00:00:00+00:00",
+        "check_duration": 1.23,
+    }
+    repo = Repository(repo="user@host:/path", name="MyRepo")
+
+    repo.check(MQTTSettings())
+
+    mock_publish.assert_called_once()
+    assert mock_publish.call_args.args[0] == repo.check_topic
+    assert repo.check_topic == f"borg/{repo.slug}/check"
+    payload = json.loads(mock_publish.call_args.kwargs["payload"])
+    assert payload["check_state"] == "ok"
 
 
 # --------------------------------------------------------------------------- #
@@ -290,7 +403,8 @@ def test_setup_publishes_one_message_per_info_key(mock_get_updates, mock_publish
 
     repo.setup(MQTTSettings())
 
-    assert mock_publish.call_count == len(info)
+    # Plus the 3 `borg check` sensors, which are always set up
+    assert mock_publish.call_count == len(info) + 3
 
 
 @patch("borg2mqtt.repo.publish.single")
@@ -315,7 +429,16 @@ def test_setup_payload_contains_device_and_topic(mock_get_updates, mock_publish)
         assert payload["device"]["identifiers"] == ["repo-id"]
         assert payload["device"]["name"] == "MyRepo"
         assert payload["device"]["manufacturer"] == "Borg"
-        assert payload["state_topic"] == repo.state_topic
+
+    update_payloads = [
+        p for p in payloads if not p["unique_id"].startswith(f"{repo.slug}_check_")
+    ]
+    check_payloads = [
+        p for p in payloads if p["unique_id"].startswith(f"{repo.slug}_check_")
+    ]
+    assert all(p["state_topic"] == repo.state_topic for p in update_payloads)
+    assert len(check_payloads) == 3
+    assert all(p["state_topic"] == repo.check_topic for p in check_payloads)
 
     num_backups_payload = next(
         json.loads(call.kwargs["payload"])

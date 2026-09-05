@@ -49,6 +49,20 @@ def test_update_operation_calls_func_with_parsed_repos_and_mqtt(
     mock_update.assert_called_once_with(repos, mqtt)
 
 
+@patch("borg2mqtt.actions.parse")
+def test_check_operation_calls_func_with_parsed_repos_and_mqtt(mock_parse, monkeypatch):
+    monkeypatch.setattr("sys.argv", ["borg2mqtt", "check", "--name", "MyRepo"])
+    repos, mqtt = MagicMock(), MagicMock()
+    mock_parse.return_value = (repos, mqtt)
+
+    with patch("borg2mqtt.actions.check") as mock_check:
+        run_borg2mqtt()
+
+    args = mock_parse.call_args.args[0]
+    assert args.name == "MyRepo"
+    mock_check.assert_called_once_with(repos, mqtt)
+
+
 def test_update_name_defaults_to_none(monkeypatch):
     monkeypatch.setattr("sys.argv", ["borg2mqtt", "update"])
 

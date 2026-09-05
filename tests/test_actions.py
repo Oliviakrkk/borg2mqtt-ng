@@ -116,6 +116,22 @@ def test_parse_does_not_filter_when_name_is_none(mock_open, mock_safe_load):
 
 @patch("borg2mqtt.actions.yaml.safe_load")
 @patch("builtins.open")
+def test_parse_filters_repos_by_name_on_check(mock_open, mock_safe_load):
+    mock_safe_load.return_value = {
+        "repos": [
+            {"repo": "user@host:/a", "name": "A"},
+            {"repo": "user@host:/b", "name": "B"},
+        ]
+    }
+
+    repos, _ = actions.parse(_args(operation="check", name="B"))
+
+    assert len(repos) == 1
+    assert repos[0].name == "B"
+
+
+@patch("borg2mqtt.actions.yaml.safe_load")
+@patch("builtins.open")
 def test_parse_does_not_filter_on_setup_operation(mock_open, mock_safe_load):
     mock_safe_load.return_value = {
         "repos": [
@@ -190,3 +206,17 @@ def test_setup_with_no_repos_does_nothing():
 
 def test_update_with_no_repos_does_nothing():
     actions.update([], MQTTSettings())  # should not raise
+
+
+def test_check_calls_check_on_each_repo():
+    repo1, repo2 = MagicMock(), MagicMock()
+    mqtt = MQTTSettings()
+
+    actions.check([repo1, repo2], mqtt)
+
+    repo1.check.assert_called_once_with(mqtt)
+    repo2.check.assert_called_once_with(mqtt)
+
+
+def test_check_with_no_repos_does_nothing():
+    actions.check([], MQTTSettings())  # should not raise

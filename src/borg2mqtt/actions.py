@@ -56,7 +56,7 @@ def parse(args: Namespace) -> tuple[list[Repository], MQTTSettings]:
 
     repos = [Repository(verbose=args.verbose, **i) for i in config["repos"]]
 
-    if args.operation == "update" and args.name is not None:
+    if args.operation in ("update", "check") and args.name is not None:
         repos = [r for r in repos if r.name == args.name]
         if len(repos) == 0:
             raise ValueError("This repo name was not found!")
@@ -90,3 +90,8 @@ def setup(repos: list[Repository], mqtt: MQTTSettings):
 def update(repos: list[Repository], mqtt: MQTTSettings):
     for r in repos:
         r.update(mqtt)
+
+
+def check(repos: list[Repository], mqtt: MQTTSettings):
+    for r in repos:
+        r.check(mqtt)

@@ -61,6 +61,21 @@ def run_borg2mqtt():
                  Default runs all of them.",
     )
 
+    # ------------------------- Run borg check ------------------------- #
+    check = subparsers.add_parser(
+        "check",
+        help="Run `borg check` and send the result as an MQTT message.",
+    )
+    check.set_defaults(func=actions.check)
+    check.add_argument(
+        "-n",
+        "--name",
+        default=None,
+        type=str,
+        help="Name of repo in configuration files. \
+                 Default runs all of them.",
+    )
+
     args = parser.parse_args()
 
     if args.operation == "generate":

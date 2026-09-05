@@ -65,11 +65,12 @@ class Repository:
         if self.name is None:
             self.name = self.repo
 
-        # Make state topic
+        # Make state topics
         self.slug = slugify(self.name, separator="_")
         self.state_topic = f"borg/{self.slug}/state"
+        self.check_topic = f"borg/{self.slug}/check"
 
-    def _ask_borg(self, command: Literal["info", "list"]):
+    def _ask_borg(self, command: Literal["info", "list"], target: str | None = None):
         """Poll borg for a response"""
 
         env = os.environ.copy()
@@ -79,7 +80,7 @@ class Repository:
         arguments = [
             "borg",
             command,
-            self.repo,
+            target if target is not None else self.repo,
             "--json",
         ]
 
@@ -97,6 +98,19 @@ class Repository:
             pprint(result)
 
         return result
+
+    def _publish(self, mqtt: MQTTSettings, topic: str, payload: dict[str, Any]):
+        """Publish a retained JSON payload to a topic"""
+
+        publish.single(
+            topic,
+            payload=json.dumps(payload),
+            hostname=mqtt.host,
+            port=mqtt.port,
+            auth={"username": mqtt.user, "password": mqtt.password},
+            tls=mqtt.tls_params(),
+            retain=True,
+        )
 
     def _get_updates(self):
         """Ask borg for information and parse the results"""
@@ -132,7 +146,79 @@ class Repository:
             .astimezone()
             .isoformat(),
         }
+
+        if repo_list["archives"]:
+            last_archive_name = repo_list["archives"][-1]["name"]
+            archive_info = self._ask_borg(
+                "info", target=f"{self.repo}::{last_archive_name}"
+            )
+            archive = archive_info["archives"][0]
+            archive_stats = archive["stats"]
+            info.update(
+                {
+                    "last_backup_name": archive["name"],
+                    "last_backup_start": datetime.datetime.strptime(
+                        archive["start"], date_format_code
+                    )
+                    .astimezone()
+                    .isoformat(),
+                    "last_backup_end": datetime.datetime.strptime(
+                        archive["end"], date_format_code
+                    )
+                    .astimezone()
+                    .isoformat(),
+                    "last_backup_duration": round(archive["duration"], 2),
+                    "last_backup_files": archive_stats["nfiles"],
+                    "last_backup_size_og": round(
+                        float(archive_stats["original_size"]) * scale, 8
+                    ),
+                    "last_backup_size_comp": round(
+                        float(archive_stats["compressed_size"]) * scale, 8
+                    ),
+                    "last_backup_size_dedup": round(
+                        float(archive_stats["deduplicated_size"]) * scale, 8
+                    ),
+                }
+            )
+
         return info
+
+    def _run_check(self):
+        """Run `borg check` against the repository and parse the results"""
+
+        env = os.environ.copy()
+        env["BORG_PASSPHRASE"] = self.key
+
+        arguments = ["borg", "check", self.repo]
+
+        if self.rsh != "":
+            env["BORG_RSH"] = self.rsh
+
+        if self.verbose >= 2:
+            print(f"[{APP_NAME}][{self.name}] Running {' '.join(arguments)}")
+
+        start = datetime.datetime.now().astimezone()
+        result = subprocess.run(
+            arguments,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            check=False,
+        )
+        end = datetime.datetime.now().astimezone()
+
+        if self.verbose >= 3:
+            print(f"[{APP_NAME}][{self.name}] Check output:")
+            print(result.stdout.decode(errors="replace"))
+
+        # borg's exit codes: 0 = success, 1 = warning, anything else = error
+        state = {0: "ok", 1: "warning"}.get(result.returncode, "error")
+
+        return {
+            "check_state": state,
+            "check_timestamp": end.isoformat(),
+            "check_duration": round((end - start).total_seconds(), 2),
+        }
 
     def update(self, mqtt: MQTTSettings):
         """Send all updated info over MQTT"""
@@ -150,15 +236,25 @@ class Repository:
                 f"[{APP_NAME}][{self.name}] Payload for send to MQTT: {json.dumps(info)}"
             )
 
-        publish.single(
-            self.state_topic,
-            payload=json.dumps(info),
-            hostname=mqtt.host,
-            port=mqtt.port,
-            auth={"username": mqtt.user, "password": mqtt.password},
-            tls=mqtt.tls_params(),
-            retain=True,
-        )
+        self._publish(mqtt, self.state_topic, info)
+
+    def check(self, mqtt: MQTTSettings):
+        """Run `borg check` and send the result over MQTT"""
+
+        if self.verbose >= 1:
+            print(f"[{APP_NAME}][{self.name}] Running consistency check")
+
+        info = self._run_check()
+
+        if self.verbose >= 1:
+            print(f"[{APP_NAME}][{self.name}] Sending MQTT check result")
+
+        if self.verbose >= 2:
+            print(
+                f"[{APP_NAME}][{self.name}] Payload for send to MQTT: {json.dumps(info)}"
+            )
+
+        self._publish(mqtt, self.check_topic, info)
 
     def setup(self, mqtt: MQTTSettings):
         """Send MQTT autodiscovery message"""
@@ -197,6 +293,48 @@ class Repository:
                 "device_class": "data_size",
                 "unit_of_meas": self.units,
             },
+            "last_backup_name": {"name": "Last Backup Name"},
+            "last_backup_start": {
+                "name": "Last Backup Start",
+                "device_class": "timestamp",
+            },
+            "last_backup_end": {
+                "name": "Last Backup End",
+                "device_class": "timestamp",
+            },
+            "last_backup_duration": {
+                "name": "Last Backup Duration",
+                "device_class": "duration",
+                "unit_of_meas": "s",
+            },
+            "last_backup_files": {"name": "Last Backup Files"},
+            "last_backup_size_og": {
+                "name": "Last Backup Original Size",
+                "device_class": "data_size",
+                "unit_of_meas": self.units,
+            },
+            "last_backup_size_comp": {
+                "name": "Last Backup Compressed Size",
+                "device_class": "data_size",
+                "unit_of_meas": self.units,
+            },
+            "last_backup_size_dedup": {
+                "name": "Last Backup Deduplicated Size",
+                "device_class": "data_size",
+                "unit_of_meas": self.units,
+            },
+        }
+
+        # `borg check` sensors are published to their own state topic, since
+        # checks are run independently (and much less often) than updates
+        check_payload_unique = {
+            "check_state": {"name": "Check State"},
+            "check_timestamp": {"name": "Check Timestamp", "device_class": "timestamp"},
+            "check_duration": {
+                "name": "Check Duration",
+                "device_class": "duration",
+                "unit_of_meas": "s",
+            },
         }
 
         device = {
@@ -205,24 +343,24 @@ class Repository:
             "model": "Borg Repository",
             "manufacturer": "Borg",
         }
-        payload_shared = {"state_topic": self.state_topic, "device": device}
 
         if self.verbose >= 1:
             print(f"[{APP_NAME}][{self.name}] Sending MQTT setup msgs")
 
-        for key in info:
+        # Check sensors are always set up (a check may not have run yet),
+        # update sensors only exist if `info` actually produced them
+        keys_to_setup = list(info) + list(check_payload_unique)
+        payload_unique = {**payload_unique, **check_payload_unique}
+
+        for key in keys_to_setup:
+            unique = payload_unique[key]
+            state_topic = (
+                self.check_topic if key in check_payload_unique else self.state_topic
+            )
             topic = f"homeassistant/sensor/{self.slug}/{key}/config"
-            payload = {**payload_unique[key], **payload_shared}
+            payload = {**unique, "state_topic": state_topic, "device": device}
             payload["default_entity_id"] = f"{self.slug}_{key}"
             payload["unique_id"] = f"{self.slug}_{key}"
             payload["value_template"] = f"{{{{value_json.{key}}}}}"
 
-            publish.single(
-                topic,
-                payload=json.dumps(payload),
-                hostname=mqtt.host,
-                port=mqtt.port,
-                auth={"username": mqtt.user, "password": mqtt.password},
-                tls=mqtt.tls_params(),
-                retain=True,
-            )
+            self._publish(mqtt, topic, payload)
